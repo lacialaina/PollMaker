@@ -1,0 +1,121 @@
+@page "/poll/{Id:guid}"
+@layout VoterLayout
+@rendermode InteractiveServer
+@inject PollMaker.Services.PollService Polls
+@inject IJSRuntime JS
+@implements IDisposable
+
+@if (poll is null)
+{
+    <h1 class="voter-question">Poll not found</h1>
+    <p>This poll link isn't valid or is no longer available.</p>
+}
+else
+{
+    <PageTitle>@poll.Question</PageTitle>
+    <h1 class="voter-question">@poll.Question</h1>
+
+    @if (!loaded)
+    {
+        @* Waiting to check this browser's saved vote, so show nothing yet *@
+    }
+    else if (!hasVoted)
+    {
+        @foreach (var opt in poll.Options)
+        {
+            <label class="voter-option @(selectedId == opt.Id ? "selected" : "")">
+                <input type="radio" name="choice"
+                       checked="@(selectedId == opt.Id)"
+                       @onchange="() => selectedId = opt.Id" />
+                <span>@opt.Text</span>
+            </label>
+        }
+
+        <button class="vote-btn" disabled="@(selectedId is null)" @onclick="CastVote">
+            Vote
+        </button>
+    }
+    else
+    {
+        <p class="voter-thanks">Thanks for voting!</p>
+
+        <h2 class="voter-results-title">Results (@poll.TotalVotes votes)</h2>
+        @foreach (var opt in poll.Options)
+        {
+            var pct = poll.TotalVotes == 0 ? 0 : (int)Math.Round(100.0 * opt.Votes / poll.TotalVotes);
+            <div class="result-row">
+                <div class="result-label">
+                    <span>@opt.Text</span>
+                    <span>@opt.Votes (@pct%)</span>
+                </div>
+                <div class="result-track">
+                    <div class="result-fill" style="width:@pct%"></div>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private Poll? poll;
+    private int? selectedId;
+    private bool hasVoted;
+    private bool loaded;
+
+    // The browser storage key is different for each poll
+    private string StorageKey => $"voted-{Id}";
+
+    protected override void OnInitialized()
+    {
+        Polls.PollChanged += OnPollChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        poll = Polls.Get(Id);
+    }
+
+    // JavaScript (browser storage) isn't available until after the first render
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            var saved = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+            hasVoted = saved == "1";
+        }
+        catch
+        {
+            // If storage is blocked, treat this visitor as not having voted
+        }
+
+        loaded = true;
+        StateHasChanged();
+    }
+
+    private async Task CastVote()
+    {
+        if (hasVoted) return;
+
+        if (selectedId is int id && Polls.Vote(Id, id))
+        {
+            hasVoted = true;
+            try
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, "1");
+            }
+            catch { }
+        }
+    }
+
+    private void OnPollChanged(Guid changedId)
+    {
+        if (changedId != Id) return;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Polls.PollChanged -= OnPollChanged;
+}

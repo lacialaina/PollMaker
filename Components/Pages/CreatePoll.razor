@@ -1,0 +1,87 @@
+@page "/"
+@page "/create"
+@rendermode InteractiveServer
+@inject PollMaker.Services.PollService Polls
+@inject NavigationManager Nav
+
+<PageTitle>Create Poll</PageTitle>
+<h1>Create a Poll</h1>
+
+@if (createdLink is not null)
+{
+    <div class="alert alert-success">
+        <strong>Poll created!</strong> Share this link:
+        <div class="input-group mt-2">
+            <input class="form-control" readonly value="@createdLink" />
+            <a class="btn btn-primary" href="@createdLink" target="_blank">Open</a>
+        </div>
+        <small class="text-muted">Select the link and press Ctrl+C to copy it.</small>
+    </div>
+}
+
+<EditForm Model="this" OnValidSubmit="HandleSubmit" FormName="create-poll">
+    <div class="mb-3">
+        <label class="form-label">Question</label>
+        <InputText class="form-control" @bind-Value="question" />
+    </div>
+
+    <label class="form-label">Options</label>
+    @foreach (var opt in options)
+    {
+        <div class="input-group mb-2">
+            <InputText class="form-control" @bind-Value="opt.Text" placeholder="Option text" />
+            <button type="button" class="btn btn-outline-danger"
+                    @onclick="() => RemoveOption(opt)"
+                    disabled="@(options.Count <= 2)">✕</button>
+        </div>
+    }
+
+    <button type="button" class="btn btn-outline-secondary mb-3"
+            @onclick="AddOption" disabled="@(options.Count >= 10)">+ Add option</button>
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    <div>
+        <button type="submit" class="btn btn-primary">Create poll</button>
+    </div>
+</EditForm>
+
+@code {
+    private string question = "";
+    private string? error;
+    private string? createdLink;
+    private List<OptionInput> options = new() { new(), new() };
+
+    private class OptionInput { public string Text { get; set; } = ""; }
+
+    private void AddOption() => options.Add(new OptionInput());
+    private void RemoveOption(OptionInput opt) => options.Remove(opt);
+
+    private void HandleSubmit()
+    {
+        createdLink = null;
+
+        var filled = options.Select(o => o.Text).Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+
+        if (string.IsNullOrWhiteSpace(question))
+        {
+            error = "Please enter a question.";
+            return;
+        }
+        if (filled.Count < 2)
+        {
+            error = "Please provide at least two options.";
+            return;
+        }
+
+        var poll = Polls.Create(question, filled);
+        createdLink = Nav.ToAbsoluteUri($"/poll/{poll.Id}").ToString();
+
+        error = null;
+        question = "";
+        options = new() { new(), new() };
+    }
+}
