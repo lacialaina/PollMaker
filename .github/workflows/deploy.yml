@@ -20,7 +20,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Publish
-        run: dotnet publish PollMaker.csproj -c Release -o release
+        run: dotnet publish PollMaker/PollMaker.csproj -c Release -o release
 
       - run: cp release/wwwroot/index.html release/wwwroot/404.html
       - run: touch release/wwwroot/.nojekyll
